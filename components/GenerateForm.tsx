@@ -5,33 +5,17 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { PLATFORMS, PLATFORM_LABEL, type Platform } from "@/lib/brand";
-
-type Phase = "idle" | "scraping" | "generating";
-type PlatformStatus = "pending" | "success" | "failed";
-
-const initialStatus = (): Record<Platform, PlatformStatus> => ({
-  instagram: "pending",
-  facebook: "pending",
-  linkedin: "pending",
-});
 
 export function GenerateForm() {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [statuses, setStatuses] = useState<Record<Platform, PlatformStatus>>(initialStatus);
-
-  const loading = phase !== "idle";
+  const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setStatuses(initialStatus());
-    setPhase("scraping");
-
-    let id: string;
+    setLoading(true);
     try {
       const res = await fetch("/api/scrape", {
         method: "POST",
@@ -48,36 +32,13 @@ export function GenerateForm() {
       }
       if (!res.ok) throw new Error(data.error ?? `Scrape failed (HTTP ${res.status})`);
       if (!data.id) throw new Error("Scrape returned no id");
-      id = data.id;
+      // Redirect immediately. The post page will auto-fire generation for all
+      // three platforms in parallel with live per-tab spinners.
+      router.push(`/g/${data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setPhase("idle");
-      return;
+      setLoading(false);
     }
-
-    setPhase("generating");
-
-    await Promise.all(
-      PLATFORMS.map(async (platform) => {
-        try {
-          const res = await fetch("/api/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, platform }),
-          });
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error ?? `${platform} failed (HTTP ${res.status})`);
-          }
-          setStatuses((s) => ({ ...s, [platform]: "success" }));
-        } catch (err) {
-          console.error(`[generate ${platform}]`, err);
-          setStatuses((s) => ({ ...s, [platform]: "failed" }));
-        }
-      }),
-    );
-
-    router.push(`/g/${id}`);
   }
 
   return (
@@ -95,63 +56,21 @@ export function GenerateForm() {
           disabled={loading}
         />
         <Button type="submit" disabled={loading || !url}>
-          {phase === "scraping" ? (
+          {loading ? (
             <span className="flex items-center gap-2">
               <Spinner /> Scraping…
-            </span>
-          ) : phase === "generating" ? (
-            <span className="flex items-center gap-2">
-              <Spinner /> Generating…
             </span>
           ) : (
             "Generate"
           )}
         </Button>
       </div>
-
-      {phase === "scraping" ? (
-        <p className="text-xs text-navy/60">Fetching and parsing the article…</p>
+      {loading ? (
+        <p className="text-xs text-navy/60">
+          Fetching and parsing the article. You&apos;ll be redirected to the post page where all three platforms generate in parallel.
+        </p>
       ) : null}
-
-      {phase === "generating" ? (
-        <div className="flex flex-col gap-2 text-sm">
-          <p className="text-xs text-navy/60">
-            Calling Claude for all 3 platforms in parallel. This takes ~10–25 seconds per platform.
-          </p>
-          <ul className="flex flex-col gap-1.5">
-            {PLATFORMS.map((p) => (
-              <li key={p} className="flex items-center gap-2">
-                {statuses[p] === "pending" ? (
-                  <Spinner className="text-orange h-4 w-4" />
-                ) : statuses[p] === "success" ? (
-                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-green-600 text-white text-[10px] font-bold">
-                    ✓
-                  </span>
-                ) : (
-                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold">
-                    ✗
-                  </span>
-                )}
-                <span
-                  className={
-                    statuses[p] === "pending"
-                      ? "text-navy/80"
-                      : statuses[p] === "success"
-                        ? "text-navy"
-                        : "text-red-600"
-                  }
-                >
-                  {PLATFORM_LABEL[p]}
-                  {statuses[p] === "pending" ? "…" : ""}
-                  {statuses[p] === "failed" ? " — failed (you can retry from the post page)" : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="text-sm text-red-600 break-words">{error}</p> : null}
     </form>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,47 +17,25 @@ export function PlatformTab({
   id,
   platform,
   output,
+  loading,
+  error,
+  version,
+  onRegenerate,
 }: {
   id: string;
   platform: Platform;
   output: PlatformOutput | undefined;
+  loading: boolean;
+  error: string | undefined;
+  version: number;
+  onRegenerate: () => void;
 }) {
-  const router = useRouter();
-  const [, startTransition] = useTransition();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [caption, setCaption] = useState(output ? composeCaption(output) : "");
-  const [version, setVersion] = useState(() => Date.now());
 
-  async function regenerate() {
-    if (loading) return; // ignore double-clicks
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, platform }),
-      });
-      const text = await res.text();
-      let data: { platform?: PlatformOutput; error?: string } = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        const snippet = text.replace(/\s+/g, " ").slice(0, 200);
-        throw new Error(`Generation failed (HTTP ${res.status}): ${snippet || "empty response"}`);
-      }
-      if (!res.ok) throw new Error(data.error ?? `Generation failed (HTTP ${res.status})`);
-      if (!data.platform) throw new Error("Generation returned no platform payload");
-      setCaption(composeCaption(data.platform));
-      setVersion(Date.now());
-      startTransition(() => router.refresh());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Update caption when output changes (from a fresh generation).
+  useEffect(() => {
+    if (output) setCaption(composeCaption(output));
+  }, [output, version]);
 
   function copyCaption() {
     void navigator.clipboard.writeText(caption);
@@ -83,12 +60,12 @@ export function PlatformTab({
               <p className="text-sm text-navy/70">
                 No {PLATFORM_LABEL[platform]} content yet. Generate caption + 6 slides with one Claude call.
               </p>
-              <Button onClick={regenerate} disabled={loading}>
+              <Button onClick={onRegenerate} disabled={loading}>
                 Generate {PLATFORM_LABEL[platform]}
               </Button>
             </>
           )}
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="text-sm text-red-600 break-words">{error}</p> : null}
         </CardContent>
       </Card>
     );
@@ -108,7 +85,7 @@ export function PlatformTab({
               <Button onClick={copyCaption} variant="ghost" size="sm" disabled={loading}>
                 Copy
               </Button>
-              <Button onClick={regenerate} variant="secondary" size="sm" disabled={loading}>
+              <Button onClick={onRegenerate} variant="secondary" size="sm" disabled={loading}>
                 {loading ? "Regenerating…" : "Regenerate"}
               </Button>
             </div>
@@ -129,7 +106,7 @@ export function PlatformTab({
               </div>
             ) : null}
           </div>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="text-sm text-red-600 break-words">{error}</p> : null}
         </CardContent>
       </Card>
 
