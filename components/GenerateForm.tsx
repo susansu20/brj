@@ -4,23 +4,31 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { PLATFORMS, PLATFORM_LABEL, type Platform } from "@/lib/brand";
 
 type Phase = "idle" | "scraping" | "generating";
+type PlatformStatus = "pending" | "success" | "failed";
+
+const initialStatus = (): Record<Platform, PlatformStatus> => ({
+  instagram: "pending",
+  facebook: "pending",
+  linkedin: "pending",
+});
 
 export function GenerateForm() {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [failed, setFailed] = useState<Platform[]>([]);
+  const [statuses, setStatuses] = useState<Record<Platform, PlatformStatus>>(initialStatus);
 
   const loading = phase !== "idle";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setFailed([]);
+    setStatuses(initialStatus());
     setPhase("scraping");
 
     let id: string;
@@ -35,7 +43,6 @@ export function GenerateForm() {
       try {
         data = text ? JSON.parse(text) : {};
       } catch {
-        // Non-JSON response body (likely a Vercel error/timeout HTML page).
         const snippet = text.replace(/\s+/g, " ").slice(0, 200);
         throw new Error(`Scrape failed (HTTP ${res.status}): ${snippet || "empty response"}`);
       }
@@ -50,26 +57,26 @@ export function GenerateForm() {
 
     setPhase("generating");
 
-    const results = await Promise.allSettled(
+    await Promise.all(
       PLATFORMS.map(async (platform) => {
-        const res = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, platform }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error ?? `${platform} failed`);
+        try {
+          const res = await fetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, platform }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error ?? `${platform} failed (HTTP ${res.status})`);
+          }
+          setStatuses((s) => ({ ...s, [platform]: "success" }));
+        } catch (err) {
+          console.error(`[generate ${platform}]`, err);
+          setStatuses((s) => ({ ...s, [platform]: "failed" }));
         }
-        return platform;
       }),
     );
 
-    const failedPlatforms = results
-      .map((r, i) => (r.status === "rejected" ? PLATFORMS[i] : null))
-      .filter((p): p is Platform => p !== null);
-
-    setFailed(failedPlatforms);
     router.push(`/g/${id}`);
   }
 
@@ -88,24 +95,63 @@ export function GenerateForm() {
           disabled={loading}
         />
         <Button type="submit" disabled={loading || !url}>
-          {phase === "scraping"
-            ? "Scraping…"
-            : phase === "generating"
-              ? "Generating…"
-              : "Generate"}
+          {phase === "scraping" ? (
+            <span className="flex items-center gap-2">
+              <Spinner /> Scraping…
+            </span>
+          ) : phase === "generating" ? (
+            <span className="flex items-center gap-2">
+              <Spinner /> Generating…
+            </span>
+          ) : (
+            "Generate"
+          )}
         </Button>
       </div>
+
+      {phase === "scraping" ? (
+        <p className="text-xs text-navy/60">Fetching and parsing the article…</p>
+      ) : null}
+
       {phase === "generating" ? (
-        <p className="text-xs text-navy/60">
-          Calling Claude for {PLATFORMS.map((p) => PLATFORM_LABEL[p]).join(", ")} in parallel. This usually takes 10–25 seconds.
-        </p>
+        <div className="flex flex-col gap-2 text-sm">
+          <p className="text-xs text-navy/60">
+            Calling Claude for all 3 platforms in parallel. This takes ~10–25 seconds per platform.
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {PLATFORMS.map((p) => (
+              <li key={p} className="flex items-center gap-2">
+                {statuses[p] === "pending" ? (
+                  <Spinner className="text-orange h-4 w-4" />
+                ) : statuses[p] === "success" ? (
+                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-green-600 text-white text-[10px] font-bold">
+                    ✓
+                  </span>
+                ) : (
+                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold">
+                    ✗
+                  </span>
+                )}
+                <span
+                  className={
+                    statuses[p] === "pending"
+                      ? "text-navy/80"
+                      : statuses[p] === "success"
+                        ? "text-navy"
+                        : "text-red-600"
+                  }
+                >
+                  {PLATFORM_LABEL[p]}
+                  {statuses[p] === "pending" ? "…" : ""}
+                  {statuses[p] === "failed" ? " — failed (you can retry from the post page)" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
+
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {failed.length > 0 ? (
-        <p className="text-sm text-amber-600">
-          Some platforms failed: {failed.map((p) => PLATFORM_LABEL[p]).join(", ")}. You can re-run them from the post page.
-        </p>
-      ) : null}
     </form>
   );
 }
