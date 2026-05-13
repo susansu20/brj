@@ -28,7 +28,7 @@ export function GenerateForm() {
       const res = await fetch("/api/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url: url.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Scrape failed");
@@ -68,7 +68,10 @@ export function GenerateForm() {
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
       <div className="flex gap-2">
         <Input
-          type="url"
+          type="text"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
           required
           placeholder="https://buildingreviewjournal.com/..."
           value={url}
