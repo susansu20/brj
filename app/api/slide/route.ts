@@ -4,6 +4,7 @@ import { renderSlidePng } from "@/lib/slideRender";
 import { PLATFORMS, type Platform } from "@/lib/brand";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -40,6 +41,14 @@ export async function GET(req: Request) {
       },
     });
   } catch (err) {
+    const slide = out.slides[index];
+    console.error(
+      `[slide] render failed id=${id} platform=${platform} index=${index}`,
+      slide
+        ? { treatment: slide.treatment, headline: slide.headline, body: slide.body }
+        : "no slide",
+      err,
+    );
     return NextResponse.json(
       { error: `Render error: ${err instanceof Error ? err.message : String(err)}` },
       { status: 500 },

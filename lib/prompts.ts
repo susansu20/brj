@@ -28,6 +28,7 @@ Rules for slides:
 - Slide 6: treatment "cta" — invite the reader to read the full piece or act.
 - headline: max ~80 chars, no quotation marks around it.
 - body: max ~200 chars, supporting text.
+- Slide headlines and bodies must be plain Latin text — NO emoji and NO non-ASCII symbols. Emoji are fine in the caption only, never in slide text.
 `.trim();
 
 function shared(input: PromptInput): string {

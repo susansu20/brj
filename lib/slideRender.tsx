@@ -7,6 +7,32 @@ import { loadFonts } from "./fonts";
 import { getLogoDataUrl } from "./logo";
 import { getCachedSlide, putCachedSlide } from "./storage";
 
+// Strip characters that the loaded Latin Inter font cannot render.
+// Satori throws when asked to lay out a glyph that doesn't exist in
+// any provided font (emoji, CJK, dingbats, etc.). We replace them with
+// a space and collapse runs of whitespace.
+function sanitize(text: string): string {
+  return text
+    // Supplementary planes: emoji (U+1F300–U+1FAFF, etc.)
+    .replace(/[\u{10000}-\u{10FFFF}]/gu, " ")
+    // BMP dingbats and misc symbols often used as emoji-ish
+    .replace(/[☀-➿]/g, " ")
+    // Variation selectors (e.g. VS16 that makes things emoji-presentation)
+    .replace(/[︀-️]/g, "")
+    // Zero-width joiners and similar
+    .replace(/[​-‍⁠]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sanitizeSlide(slide: Slide): Slide {
+  return {
+    ...slide,
+    headline: sanitize(slide.headline),
+    body: sanitize(slide.body),
+  };
+}
+
 function pickTemplate(
   slide: Slide,
   width: number,
@@ -30,8 +56,9 @@ export async function renderSlidePng(
   const cached = await getCachedSlide(id, platform, index);
   if (cached) return cached;
 
-  const slide = slides[index];
-  if (!slide) throw new Error(`Slide index ${index} out of range`);
+  const raw = slides[index];
+  if (!raw) throw new Error(`Slide index ${index} out of range`);
+  const slide = sanitizeSlide(raw);
   const { width, height } = SIZE[platform];
   const [fonts, logoDataUrl] = await Promise.all([loadFonts(), getLogoDataUrl()]);
 
