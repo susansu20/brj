@@ -65,7 +65,7 @@ export function GenerateForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-3">
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-3">
       <div className="flex gap-2">
         <Input
           type="text"
