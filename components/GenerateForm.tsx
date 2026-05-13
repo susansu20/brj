@@ -30,9 +30,18 @@ export function GenerateForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Scrape failed");
-      id = data.id as string;
+      const text = await res.text();
+      let data: { id?: string; error?: string } = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        // Non-JSON response body (likely a Vercel error/timeout HTML page).
+        const snippet = text.replace(/\s+/g, " ").slice(0, 200);
+        throw new Error(`Scrape failed (HTTP ${res.status}): ${snippet || "empty response"}`);
+      }
+      if (!res.ok) throw new Error(data.error ?? `Scrape failed (HTTP ${res.status})`);
+      if (!data.id) throw new Error("Scrape returned no id");
+      id = data.id;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setPhase("idle");
