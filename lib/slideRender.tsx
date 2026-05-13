@@ -1,4 +1,3 @@
-import { promises as fs } from "node:fs";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import { SIZE, type Platform, type Slide } from "./brand";
@@ -6,7 +5,7 @@ import { Editorial } from "./templates/Editorial";
 import { Quote } from "./templates/Quote";
 import { loadFonts } from "./fonts";
 import { getLogoDataUrl } from "./logo";
-import { slidePath } from "./storage";
+import { getCachedSlide, putCachedSlide } from "./storage";
 
 function pickTemplate(
   slide: Slide,
@@ -28,12 +27,8 @@ export async function renderSlidePng(
   index: number,
   slides: Slide[],
 ): Promise<Buffer> {
-  const cachePath = slidePath(id, platform, index);
-  try {
-    return await fs.readFile(cachePath);
-  } catch {
-    // miss; render below
-  }
+  const cached = await getCachedSlide(id, platform, index);
+  if (cached) return cached;
 
   const slide = slides[index];
   if (!slide) throw new Error(`Slide index ${index} out of range`);
@@ -43,6 +38,6 @@ export async function renderSlidePng(
   const element = pickTemplate(slide, width, height, index, slides.length, logoDataUrl);
   const svg = await satori(element as React.ReactNode, { width, height, fonts });
   const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
-  await fs.writeFile(cachePath, png);
+  await putCachedSlide(id, platform, index, png);
   return png;
 }
